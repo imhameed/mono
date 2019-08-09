@@ -1197,6 +1197,10 @@ arch_init (MonoAotCompile *acfg)
 #ifdef TARGET_ANDROID
 	acfg->llvm_owriter_supported = FALSE;
 #endif
+
+#if XXXih_USE_LLVM_FAULT_MAPS
+	g_string_append (acfg->llc_args, " -enable-implicit-null-checks");
+#endif
 }
 
 #ifdef TARGET_ARM64
@@ -9639,7 +9643,11 @@ emit_llvm_file (MonoAotCompile *acfg)
 		// FIXME: This doesn't work yet
 		opts = g_strdup ("");
 	} else {
+		#if XXXih_USE_BACKEDGE_SAFEPOINT_OPTS
+		opts = g_strdup ("-O2 -disable-tail-calls -place-safepoints");
+		#else
 		opts = g_strdup ("-O2 -disable-tail-calls -place-safepoints -spp-all-backedges");
+		#endif
 	}
 
 	if (acfg->aot_opts.llvm_opts) {

@@ -8,6 +8,13 @@
 #include "mini.h"
 #include "aot-runtime.h"
 
+#define XXXih_USE_VOLATILE_FOR_FAULTING_OPS 0
+#define XXXih_USE_LLVMIR_EXPLICIT_NULL_CHECKS 0
+#define XXXih_USE_LLVM_FAULT_MAPS 1
+#define XXXih_USE_STATIC_PREDICTION_FOR_NULL_CHECKS 1
+#define XXXih_USE_STATIC_PREDICTION_FOR_SAFEPOINT_POLL 1
+#define XXXih_USE_BACKEDGE_SAFEPOINT_OPTS 1
+
 /* LLVM backend */
 
 typedef enum {

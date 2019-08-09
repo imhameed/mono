@@ -2204,11 +2204,18 @@ emit_call (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, LL
 }
 
 static LLVMValueRef
-emit_load (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, int size, LLVMValueRef addr, LLVMValueRef base, const char *name, gboolean is_faulting, BarrierKind barrier)
+emit_load (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, int size, LLVMValueRef addr, LLVMValueRef base, const char *name, gboolean is_faulting, gboolean is_volatile, BarrierKind barrier)
 {
 	LLVMValueRef res;
-
-	if (is_faulting && bb->region != -1 && !ctx->cfg->llvm_only) {
+	// XXXih
+	#if 0
+	if ((is_faulting || is_volatile) && bb->region != -1 && (!ctx->cfg->llvm_only || XXXih_USE_LLVMIR_EXPLICIT_NULL_CHECKS))
+	#elif 0
+	if ((is_faulting || is_volatile) && (!ctx->cfg->llvm_only || XXXih_USE_LLVMIR_EXPLICIT_NULL_CHECKS))
+	#else
+	if (0)
+	#endif
+	{
 		/* The llvm.mono.load/store intrinsics are not supported by this llvm version, emit an explicit null check instead */
 		LLVMValueRef cmp;
 
@@ -2223,9 +2230,9 @@ emit_load (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, in
 	 * NULL address.
 	 */
 	if (barrier != LLVM_BARRIER_NONE)
-		res = mono_llvm_build_atomic_load (*builder_ref, addr, name, is_faulting, size, barrier);
+		res = mono_llvm_build_atomic_load (*builder_ref, addr, name, is_volatile, size, barrier);
 	else
-		res = mono_llvm_build_load (*builder_ref, addr, name, is_faulting);
+		res = mono_llvm_build_load (*builder_ref, addr, name, is_volatile);
 
 	/* Mark it with a custom metadata */
 	/*
@@ -2237,9 +2244,17 @@ emit_load (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, in
 }
 
 static void
-emit_store_general (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, int size, LLVMValueRef value, LLVMValueRef addr, LLVMValueRef base, gboolean is_faulting, BarrierKind barrier)
+emit_store_general (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, int size, LLVMValueRef value, LLVMValueRef addr, LLVMValueRef base, gboolean is_faulting, gboolean is_volatile, BarrierKind barrier)
 {
-	if (is_faulting && bb->region != -1 && !ctx->cfg->llvm_only) {
+	// XXXih
+	#if 0
+	if ((is_faulting || is_volatile) && bb->region != -1 && (!ctx->cfg->llvm_only || XXXih_USE_LLVMIR_EXPLICIT_NULL_CHECKS))
+	#elif 0
+	if ((is_faulting || is_volatile) && (!ctx->cfg->llvm_only || XXXih_USE_LLVMIR_EXPLICIT_NULL_CHECKS))
+	#else
+	if (0)
+	#endif
+	{
 		/* The llvm.mono.load/store intrinsics are not supported by this llvm version, emit an explicit null check instead */
 		LLVMValueRef cmp = LLVMBuildICmp (*builder_ref, LLVMIntEQ, base, LLVMConstNull (LLVMTypeOf (base)), "");
 		emit_cond_system_exception (ctx, bb, "NullReferenceException", cmp);
@@ -2249,13 +2264,13 @@ emit_store_general (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builde
 	if (barrier != LLVM_BARRIER_NONE)
 		mono_llvm_build_aligned_store (*builder_ref, value, addr, barrier, size);
 	else
-		mono_llvm_build_store (*builder_ref, value, addr, is_faulting, barrier);
+		mono_llvm_build_store (*builder_ref, value, addr, is_volatile, barrier);
 }
 
 static void
-emit_store (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, int size, LLVMValueRef value, LLVMValueRef addr, LLVMValueRef base, gboolean is_faulting)
+emit_store (EmitContext *ctx, MonoBasicBlock *bb, LLVMBuilderRef *builder_ref, int size, LLVMValueRef value, LLVMValueRef addr, LLVMValueRef base, gboolean is_faulting, gboolean is_volatile)
 {
-	emit_store_general (ctx, bb, builder_ref, size, value, addr, base, is_faulting, LLVM_BARRIER_NONE);
+	emit_store_general (ctx, bb, builder_ref, size, value, addr, base, is_faulting, is_volatile, LLVM_BARRIER_NONE);
 }
 
 /*
@@ -2289,7 +2304,17 @@ emit_cond_system_exception (EmitContext *ctx, MonoBasicBlock *bb, const char *ex
 		ex2_bb = gen_bb (ctx, "EX2_BB");
 	noex_bb = gen_bb (ctx, "NOEX_BB");
 
-	LLVMBuildCondBr (ctx->builder, cmp, ex_bb, noex_bb);
+	#if XXXih_USE_STATIC_PREDICTION_FOR_NULL_CHECKS
+	LLVMValueRef branch = mono_llvm_build_weighted_branch (ctx->builder, cmp, ex_bb, noex_bb, 4, 64);
+	#else
+	LLVMValueRef branch = LLVMBuildCondBr (ctx->builder, cmp, ex_bb, noex_bb);
+	#endif
+
+	#if XXXih_USE_LLVM_FAULT_MAPS
+	if (exc_id == MONO_EXC_NULL_REF) {
+		mono_llvm_set_implicit_branch (ctx->builder, branch);
+	}
+	#endif
 
 	/* Emit exception throwing code */
 	ctx->builder = builder = create_builder (ctx);
@@ -3069,7 +3094,11 @@ emit_gc_safepoint_poll (MonoLLVMModule *module)
 	val_ptr = LLVMBuildLoad (builder, flag_addr, "");
 	val = LLVMBuildPtrToInt (builder, val_ptr, IntPtrType (), "");
 	cmp = LLVMBuildICmp (builder, LLVMIntEQ, val, LLVMConstNull (LLVMTypeOf (val)), "");
+	#if XXXih_USE_STATIC_PREDICTION_FOR_SAFEPOINT_POLL
+	mono_llvm_build_weighted_branch (builder, cmp, exit_bb, poll_bb, 64, 4);
+	#else
 	LLVMBuildCondBr (builder, cmp, exit_bb, poll_bb);
+	#endif
 
 	/* poll: */
 	LLVMPositionBuilderAtEnd(builder, poll_bb);
@@ -5617,7 +5646,13 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			LLVMValueRef base, index, addr;
 			LLVMTypeRef t;
 			gboolean sext = FALSE, zext = FALSE;
-			gboolean is_volatile = (ins->flags & (MONO_INST_FAULT | MONO_INST_VOLATILE)) != 0;
+			#if XXXih_USE_VOLATILE_FOR_FAULTING_OPS
+			gboolean is_volatile = (ins->flags & (MONO_INST_VOLATILE | MONO_INST_FAULT)) != 0;
+			gboolean is_faulting = is_volatile;
+			#else
+			gboolean is_volatile = (ins->flags & MONO_INST_VOLATILE) != 0;
+			gboolean is_faulting = (ins->flags & MONO_INST_FAULT) != 0;
+			#endif
 
 			t = load_store_to_llvm_type (ins->opcode, &size, &sext, &zext);
 
@@ -5645,7 +5680,7 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 
 			addr = convert (ctx, addr, LLVMPointerType (t, 0));
 
-			values [ins->dreg] = emit_load (ctx, bb, &builder, size, addr, base, dname, is_volatile, LLVM_BARRIER_NONE);
+			values [ins->dreg] = emit_load (ctx, bb, &builder, size, addr, base, dname, is_faulting, is_volatile, LLVM_BARRIER_NONE);
 
 			if (!is_volatile && (ins->flags & MONO_INST_INVARIANT_LOAD)) {
 				/*
@@ -5675,7 +5710,13 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			LLVMValueRef index, addr, base;
 			LLVMTypeRef t;
 			gboolean sext = FALSE, zext = FALSE;
-			gboolean is_volatile = (ins->flags & (MONO_INST_FAULT | MONO_INST_VOLATILE)) != 0;
+			#if XXXih_USE_VOLATILE_FOR_FAULTING_OPS
+			gboolean is_volatile = (ins->flags & (MONO_INST_VOLATILE | MONO_INST_FAULT)) != 0;
+			gboolean is_faulting = is_volatile;
+			#else
+			gboolean is_volatile = (ins->flags & MONO_INST_VOLATILE) != 0;
+			gboolean is_faulting = (ins->flags & MONO_INST_FAULT) != 0;
+			#endif
 
 			if (!values [ins->inst_destbasereg]) {
 				set_failure (ctx, "inst_destbasereg");
@@ -5693,7 +5734,7 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 				index = LLVMConstInt (LLVMInt32Type (), ins->inst_offset / size, FALSE);				
 				addr = LLVMBuildGEP (builder, convert (ctx, base, LLVMPointerType (t, 0)), &index, 1, "");
 			}
-			emit_store (ctx, bb, &builder, size, convert (ctx, values [ins->sreg1], t), convert (ctx, addr, LLVMPointerType (t, 0)), base, is_volatile);
+			emit_store (ctx, bb, &builder, size, convert (ctx, values [ins->sreg1], t), convert (ctx, addr, LLVMPointerType (t, 0)), base, is_faulting, is_volatile);
 			break;
 		}
 
@@ -5706,7 +5747,13 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			LLVMValueRef index, addr, base;
 			LLVMTypeRef t;
 			gboolean sext = FALSE, zext = FALSE;
-			gboolean is_volatile = (ins->flags & (MONO_INST_FAULT | MONO_INST_VOLATILE)) != 0;
+			#if XXXih_USE_VOLATILE_FOR_FAULTING_OPS
+			gboolean is_volatile = (ins->flags & (MONO_INST_VOLATILE | MONO_INST_FAULT)) != 0;
+			gboolean is_faulting = is_volatile;
+			#else
+			gboolean is_volatile = (ins->flags & MONO_INST_VOLATILE) != 0;
+			gboolean is_faulting = (ins->flags & MONO_INST_FAULT) != 0;
+			#endif
 
 			t = load_store_to_llvm_type (ins->opcode, &size, &sext, &zext);
 
@@ -5719,12 +5766,13 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 				index = LLVMConstInt (LLVMInt32Type (), ins->inst_offset / size, FALSE);				
 				addr = LLVMBuildGEP (builder, convert (ctx, base, LLVMPointerType (t, 0)), &index, 1, "");
 			}
-			emit_store (ctx, bb, &builder, size, convert (ctx, LLVMConstInt (IntPtrType (), ins->inst_imm, FALSE), t), convert (ctx, addr, LLVMPointerType (t, 0)), base, is_volatile);
+			emit_store (ctx, bb, &builder, size, convert (ctx, LLVMConstInt (IntPtrType (), ins->inst_imm, FALSE), t), convert (ctx, addr, LLVMPointerType (t, 0)), base, is_faulting, is_volatile);
 			break;
 		}
 
 		case OP_CHECK_THIS:
-			emit_load (ctx, bb, &builder, TARGET_SIZEOF_VOID_P, convert (ctx, lhs, LLVMPointerType (IntPtrType (), 0)), lhs, "", TRUE, LLVM_BARRIER_NONE);
+			// XXXih
+			emit_load (ctx, bb, &builder, TARGET_SIZEOF_VOID_P, convert (ctx, lhs, LLVMPointerType (IntPtrType (), 0)), lhs, "", TRUE, FALSE, LLVM_BARRIER_NONE);
 			break;
 		case OP_OUTARG_VTRETADDR:
 			break;
@@ -6040,7 +6088,13 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			int size;
 			gboolean sext, zext;
 			LLVMTypeRef t;
-			gboolean is_volatile = (ins->flags & (MONO_INST_FAULT | MONO_INST_VOLATILE)) != 0;
+			#if XXXih_USE_VOLATILE_FOR_FAULTING_OPS
+			gboolean is_volatile = (ins->flags & (MONO_INST_VOLATILE | MONO_INST_FAULT)) != 0;
+			gboolean is_faulting = is_volatile;
+			#else
+			gboolean is_volatile = (ins->flags & MONO_INST_VOLATILE) != 0;
+			gboolean is_faulting = (ins->flags & MONO_INST_FAULT) != 0;
+			#endif
 			BarrierKind barrier = (BarrierKind) ins->backend.memory_barrier_kind;
 			LLVMValueRef index, addr;
 
@@ -6059,7 +6113,8 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			addr = convert (ctx, addr, LLVMPointerType (t, 0));
 
 			ARM64_ATOMIC_FENCE_FIX;
-			values [ins->dreg] = emit_load (ctx, bb, &builder, size, addr, lhs, dname, is_volatile, barrier);
+			printf("OP_ATOMIC_LOAD_*: emitting a load\n");
+			values [ins->dreg] = emit_load (ctx, bb, &builder, size, addr, lhs, dname, is_faulting, is_volatile, barrier);
 			ARM64_ATOMIC_FENCE_FIX;
 
 			if (sext)
@@ -6081,7 +6136,13 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			int size;
 			gboolean sext, zext;
 			LLVMTypeRef t;
-			gboolean is_volatile = (ins->flags & (MONO_INST_FAULT | MONO_INST_VOLATILE)) != 0;
+			#if XXXih_USE_VOLATILE_FOR_FAULTING_OPS
+			gboolean is_volatile = (ins->flags & (MONO_INST_VOLATILE | MONO_INST_FAULT)) != 0;
+			gboolean is_faulting = is_volatile;
+			#else
+			gboolean is_volatile = (ins->flags & MONO_INST_VOLATILE) != 0;
+			gboolean is_faulting = (ins->flags & MONO_INST_FAULT) != 0;
+			#endif
 			BarrierKind barrier = (BarrierKind) ins->backend.memory_barrier_kind;
 			LLVMValueRef index, addr, value, base;
 
@@ -6098,7 +6159,7 @@ process_bb (EmitContext *ctx, MonoBasicBlock *bb)
 			value = convert (ctx, values [ins->sreg1], t);
 
 			ARM64_ATOMIC_FENCE_FIX;
-			emit_store_general (ctx, bb, &builder, size, value, addr, base, is_volatile, barrier);
+			emit_store_general (ctx, bb, &builder, size, value, addr, base, is_faulting, is_volatile, barrier);
 			ARM64_ATOMIC_FENCE_FIX;
 			break;
 		}
