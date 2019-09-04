@@ -431,7 +431,7 @@ parse_unmanaged_function_pointer_attr (MonoClass *klass, MonoMethodPInvoke *piin
 		 * construct it.
 		 */
 		cinfo = mono_custom_attrs_from_class_checked (klass, error);
-		if (!mono_error_ok (error)) {
+		if (!is_ok (error)) {
 			g_warning ("Could not load UnmanagedFunctionPointerAttribute due to %s", mono_error_get_message (error));
 			mono_error_cleanup (error);
 		}
@@ -440,7 +440,7 @@ parse_unmanaged_function_pointer_attr (MonoClass *klass, MonoMethodPInvoke *piin
 			if (attr) {
 				piinfo->piflags = (attr->call_conv << 8) | (attr->charset ? (attr->charset - 1) * 2 : 1) | attr->set_last_error;
 			} else {
-				if (!mono_error_ok (error)) {
+				if (!is_ok (error)) {
 					g_warning ("Could not load UnmanagedFunctionPointerAttribute due to %s", mono_error_get_message (error));
 					mono_error_cleanup (error);
 				}
@@ -1219,7 +1219,7 @@ mono_delegate_begin_invoke (MonoDelegate *delegate, gpointer *params)
 
 			exc = NULL;
 			mono_remoting_invoke ((MonoObject *)tp->rp, msg, &exc, &out_args, error);
-			if (!mono_error_ok (error)) {
+			if (!is_ok (error)) {
 				mono_error_set_pending_exception (error);
 				return NULL;
 			}
@@ -1551,7 +1551,7 @@ mono_marshal_method_from_wrapper (MonoMethod *wrapper)
 			 * contains an uninflated method.
 			 */
 			result = mono_class_inflate_generic_method_checked (m, mono_method_get_context (wrapper), error);
-			g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+			g_assert (is_ok (error)); /* FIXME don't swallow the error */
 			return result;
 		}
 		return m;
@@ -1561,7 +1561,7 @@ mono_marshal_method_from_wrapper (MonoMethod *wrapper)
 			ERROR_DECL (error);
 			MonoMethod *result;
 			result = mono_class_inflate_generic_method_checked (m, mono_method_get_context (wrapper), error);
-			g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+			g_assert (is_ok (error)); /* FIXME don't swallow the error */
 			return result;
 		}
 		return m;
@@ -1656,7 +1656,7 @@ get_wrapper_target_class (MonoImage *image)
 		klass = ((MonoDynamicImage*)image)->wrappers_type;
 	} else {
 		klass = mono_class_get_checked (image, mono_metadata_make_token (MONO_TABLE_TYPEDEF, 1), error);
-		g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+		g_assert (is_ok (error)); /* FIXME don't swallow the error */
 	}
 	g_assert (klass);
 
@@ -1699,7 +1699,7 @@ check_generic_wrapper_cache (GHashTable *cache, MonoMethod *orig_method, gpointe
 	if (def) {
 		ERROR_DECL (error);
 		inst = mono_class_inflate_generic_method_checked (def, ctx, error);
-		g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+		g_assert (is_ok (error)); /* FIXME don't swallow the error */
 		/* Cache it */
 		mono_memory_barrier ();
 		mono_marshal_lock ();
@@ -1724,7 +1724,7 @@ cache_generic_wrapper (GHashTable *cache, MonoMethod *orig_method, MonoMethod *d
 	 * We use the same cache for the generic definition and the instances.
 	 */
 	inst = mono_class_inflate_generic_method_checked (def, ctx, error);
-	g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+	g_assert (is_ok (error)); /* FIXME don't swallow the error */
 	mono_memory_barrier ();
 	mono_marshal_lock ();
 	res = (MonoMethod *)g_hash_table_lookup (cache, key);
@@ -1756,7 +1756,7 @@ check_generic_delegate_wrapper_cache (GHashTable *cache, MonoMethod *orig_method
 	def = mono_marshal_find_in_cache (cache, def_method->klass);
 	if (def) {
 		inst = mono_class_inflate_generic_method_checked (def, ctx, error);
-		g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+		g_assert (is_ok (error)); /* FIXME don't swallow the error */
 
 		/* Cache it */
 		mono_memory_barrier ();
@@ -1783,7 +1783,7 @@ cache_generic_delegate_wrapper (GHashTable *cache, MonoMethod *orig_method, Mono
 	 * We use the same cache for the generic definition and the instances.
 	 */
 	inst = mono_class_inflate_generic_method_checked (def, ctx, error);
-	g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+	g_assert (is_ok (error)); /* FIXME don't swallow the error */
 
 	ginfo = mono_marshal_get_wrapper_info (def);
 	if (ginfo) {
@@ -1902,7 +1902,7 @@ mono_delegate_end_invoke (MonoDelegate *delegate, gpointer *params)
 	if (!delegate->method_info) {
 		g_assert (delegate->method);
 		MonoReflectionMethod *rm = mono_method_get_object_checked (domain, delegate->method, NULL, error);
-		if (!mono_error_ok (error)) {
+		if (!is_ok (error)) {
 			mono_error_set_pending_exception (error);
 			return NULL;
 		}
@@ -1942,7 +1942,7 @@ mono_delegate_end_invoke (MonoDelegate *delegate, gpointer *params)
 	if (delegate->target && mono_object_is_transparent_proxy (delegate->target)) {
 		MonoTransparentProxy* tp = (MonoTransparentProxy *)delegate->target;
 		msg = (MonoMethodMessage *)mono_object_new_checked (domain, mono_defaults.mono_method_message_class, error);
-		if (!mono_error_ok (error)) {
+		if (!is_ok (error)) {
 			mono_error_set_pending_exception (error);
 			return NULL;
 		}
@@ -1952,7 +1952,7 @@ mono_delegate_end_invoke (MonoDelegate *delegate, gpointer *params)
 		msg->call_type = CallType_EndInvoke;
 		MONO_OBJECT_SETREF_INTERNAL (msg, async_result, ares);
 		res = mono_remoting_invoke ((MonoObject *)tp->rp, msg, &exc, &out_args, error);
-		if (!mono_error_ok (error)) {
+		if (!is_ok (error)) {
 			mono_error_set_pending_exception (error);
 			return NULL;
 		}
@@ -3030,6 +3030,41 @@ mono_marshal_get_aot_init_wrapper (MonoAotInitSubtype subtype)
 	return res;
 }
 
+/*
+ * mono_marshal_get_llvm_func_wrapper:
+ *
+ *   Return a dummy wrapper which represents an LLVM function to the
+ * rest of the runtime for EH etc. purposes. The body of the method is
+ * LLVM code.
+ */
+MonoMethod *
+mono_marshal_get_llvm_func_wrapper (MonoLLVMFuncWrapperSubtype subtype)
+{
+	MonoMethodBuilder *mb;
+	MonoMethod *res;
+	WrapperInfo *info;
+	MonoMethodSignature *csig = NULL;
+	MonoType *void_type = mono_get_void_type ();
+	MonoType *int_type = mono_get_int_type ();
+	char *name = g_strdup_printf ("llvm_func_wrapper_%d", subtype);
+
+	csig = mono_metadata_signature_alloc (mono_defaults.corlib, 0);
+	csig->ret = void_type;
+
+	mb = mono_mb_new (mono_defaults.object_class, name, MONO_WRAPPER_OTHER);
+
+	// Just stub out the method with a "CEE_RET"
+	// Our codegen backend generates other code here
+	get_marshal_cb ()->emit_return (mb);
+
+	info = mono_wrapper_info_create (mb, WRAPPER_SUBTYPE_LLVM_FUNC);
+	info->d.llvm_func.subtype = subtype;
+	res = mono_mb_create (mb, csig, csig->param_count + 16, info);
+	mono_mb_free (mb);
+
+	return res;
+}
+
 #ifndef ENABLE_ILGEN
 static int
 emit_marshal_custom_noilgen (EmitMarshalContext *m, int argnum, MonoType *t,
@@ -3879,7 +3914,7 @@ mono_marshal_get_managed_wrapper (MonoMethod *method, MonoClass *delegate_klass,
 
 			mono_reflection_create_custom_attr_data_args_noalloc (mono_defaults.corlib, attr->ctor, attr->data, attr->data_size,
 																  &typed_args, &named_args, &num_named_args, &arginfo, error);
-			g_assert (mono_error_ok (error));
+			g_assert (is_ok (error));
 
 			/* typed args */
 			call_conv = *(gint32*)typed_args [0];
@@ -4297,7 +4332,7 @@ mono_marshal_get_synchronized_inner_wrapper (MonoMethod *method)
 	if (ctx) {
 		ERROR_DECL (error);
 		res = mono_class_inflate_generic_method_checked (res, ctx, error);
-		g_assert (mono_error_ok (error)); /* FIXME don't swallow the error */
+		g_assert (is_ok (error)); /* FIXME don't swallow the error */
 	}
 	return res;
 }
@@ -5285,12 +5320,20 @@ ves_icall_System_Runtime_InteropServices_Marshal_OffsetOf (MonoReflectionTypeHan
 		return 0;
 	}
 	if (MONO_HANDLE_IS_NULL (field_name)) {
+#ifdef ENABLE_NETCORE
+		mono_error_set_argument_null (error, NULL, "");
+#else
 		mono_error_set_argument_null (error, "fieldName", "");
+#endif
 		return 0;
 	}
 
 	if (!m_class_is_runtime_type (MONO_HANDLE_GET_CLASS (ref_type))) {
+#ifdef ENABLE_NETCORE
+		mono_error_set_argument (error, "fieldName", "");
+#else
 		mono_error_set_argument (error, "type", "");
+#endif
 		return 0;
 	}
 
@@ -5460,7 +5503,7 @@ ves_icall_System_Runtime_InteropServices_Marshal_AllocHGlobal (gsize size, MonoE
 }
 
 #ifndef HOST_WIN32
-static inline gpointer
+static gpointer
 mono_marshal_realloc_hglobal (gpointer ptr, size_t size)
 {
 	return g_try_realloc (ptr, size);
@@ -5484,7 +5527,7 @@ ves_icall_System_Runtime_InteropServices_Marshal_ReAllocHGlobal (gpointer ptr, g
 }
 
 #ifndef HOST_WIN32
-static inline void
+static void
 mono_marshal_free_hglobal (gpointer ptr)
 {
 	g_free (ptr);
@@ -5526,7 +5569,7 @@ ves_icall_System_Runtime_InteropServices_Marshal_FreeCoTaskMem (void *ptr)
 }
 
 #ifndef HOST_WIN32
-static inline gpointer
+static gpointer
 mono_marshal_realloc_co_task_mem (gpointer ptr, size_t size)
 {
 	return g_try_realloc (ptr, size);
@@ -5951,9 +5994,19 @@ mono_marshal_type_size (MonoType *type, MonoMarshalSpec *mspec, guint32 *align,
 		klass = mono_class_from_mono_type_internal (type);
 		if (klass == mono_defaults.object_class &&
 			(mspec && mspec->native == MONO_NATIVE_STRUCT)) {
-		*align = 16;
-		return 16;
+			*align = 16;
+			return 16;
+		} 
+#ifdef ENABLE_NETCORE
+		else if (strcmp (m_class_get_name_space (klass), "System") == 0 && 
+			strcmp (m_class_get_name (klass), "Decimal") == 0) {
+			
+			// Special case: Managed Decimal consists of 4 int32 fields, the alignment should be 8 on x64 to follow 
+			// https://github.com/dotnet/coreclr/blob/4450e5ca663b9e66c20e6f9751c941efa3716fde/src/vm/methodtablebuilder.cpp#L9753
+			*align = MONO_ABI_ALIGNOF (gpointer);
+			return mono_class_native_size (klass, NULL);
 		}
+#endif
 		padded_size = mono_class_native_size (klass, align);
 		if (padded_size == 0)
 			padded_size = 1;
@@ -6104,7 +6157,7 @@ mono_marshal_free_asany_impl (MonoObjectHandle o, gpointer ptr, MonoMarshalNativ
 			pa [1] = MONO_HANDLE_RAW (o);
 
 			mono_runtime_invoke_checked (method, NULL, pa, error);
-			if (!mono_error_ok (error))
+			if (!is_ok (error))
 				return;
 		}
 
@@ -6320,6 +6373,9 @@ clear_runtime_invoke_method_cache (GHashTable *table, MonoMethod *method)
 void
 mono_marshal_free_dynamic_wrappers (MonoMethod *method)
 {
+	if (!method)
+		return;
+
 	MonoImage *image = get_method_image (method);
 
 	g_assert (method_is_dynamic (method));

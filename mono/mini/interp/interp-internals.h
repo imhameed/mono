@@ -39,7 +39,9 @@ enum {
 };
 
 enum {
-	INTERP_OPT_INLINE = 1
+	INTERP_OPT_INLINE = 1,
+	INTERP_OPT_CPROP = 2,
+	INTERP_OPT_DEFAULT = INTERP_OPT_INLINE | INTERP_OPT_CPROP
 };
 
 #if SIZEOF_VOID_P == 4
@@ -131,11 +133,8 @@ struct _InterpFrame {
 	InterpFrame *parent; /* parent */
 	InterpMethod  *imethod; /* parent */
 	stackval       *retval; /* parent */
-	char           *args;
-	char           *varargs;
 	stackval       *stack_args; /* parent */
 	stackval       *stack;
-	unsigned char  *locals;
 	/*
 	 * For GC tracking of local objrefs in exec_method ().
 	 * Storing into this field will keep the object pinned
@@ -147,9 +146,9 @@ struct _InterpFrame {
 	/* exception info */
 	const unsigned short  *ip;
 	MonoException     *ex;
-	GSList *finally_ips;
-	const unsigned short *endfinally_ip;
 };
+
+#define frame_locals(frame) (((guchar*)((frame)->stack)) + (frame)->imethod->stack_size + (frame)->imethod->vt_stack_size)
 
 typedef struct {
 	/* Resume state for resuming execution in mixed mode */
@@ -157,13 +156,15 @@ typedef struct {
 	/* Frame to resume execution at */
 	InterpFrame *handler_frame;
 	/* IP to resume execution at */
-	guint16 *handler_ip;
+	const guint16 *handler_ip;
 	/* Clause that we are resuming to */
 	MonoJitExceptionInfo *handler_ei;
 } ThreadContext;
 
 typedef struct {
 	gint64 transform_time;
+	gint64 cprop_time;
+	gint32 killed_instructions;
 	gint32 inlined_methods;
 	gint32 inline_failures;
 } MonoInterpStats;

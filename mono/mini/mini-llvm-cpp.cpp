@@ -249,26 +249,9 @@ mono_llvm_set_is_constant (LLVMValueRef global_var)
 	unwrap<GlobalVariable>(global_var)->setConstant (true);
 }
 
-void
-mono_llvm_set_preserveall_cc (LLVMValueRef func)
-{
-	unwrap<Function>(func)->setCallingConv (CallingConv::PreserveAll);
-}
-
 // Note that in future versions of LLVM, CallInst and InvokeInst
 // share a CallBase parent class that would make the below methods
 // look much better
-
-void
-mono_llvm_set_call_preserveall_cc (LLVMValueRef wrapped_calli)
-{
-	Instruction *calli = unwrap<Instruction> (wrapped_calli);
-
-	if (isa<CallInst> (calli))
-		dyn_cast<CallInst>(calli)->setCallingConv (CallingConv::PreserveAll);
-	else
-		dyn_cast<InvokeInst>(calli)->setCallingConv (CallingConv::PreserveAll);
-}
 
 void
 mono_llvm_set_call_nonnull_arg (LLVMValueRef wrapped_calli, int argNo)
@@ -485,6 +468,14 @@ void*
 mono_llvm_di_create_location (void *di_builder, void *scope, int row, int column)
 {
 	return DILocation::get (*unwrap(LLVMGetGlobalContext ()), row, column, (Metadata*)scope);
+}
+
+void
+mono_llvm_set_fast_math (LLVMBuilderRef builder)
+{
+	FastMathFlags flags;
+	flags.setFast ();
+	unwrap(builder)->setFastMathFlags (flags);
 }
 
 void

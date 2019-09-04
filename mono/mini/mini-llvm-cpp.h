@@ -104,12 +104,6 @@ void
 mono_llvm_set_is_constant (LLVMValueRef global_var);
 
 void
-mono_llvm_set_preserveall_cc (LLVMValueRef func);
-
-void
-mono_llvm_set_call_preserveall_cc (LLVMValueRef call);
-
-void
 mono_llvm_set_call_nonnull_arg (LLVMValueRef calli, int argNo);
 
 void
@@ -164,6 +158,9 @@ mono_llvm_di_create_location (void *di_builder, void *scope, int row, int column
 
 void
 mono_llvm_di_builder_finalize (void *di_builder);
+
+void
+mono_llvm_set_fast_math (LLVMBuilderRef builder);
 
 void
 mono_llvm_di_set_location (LLVMBuilderRef builder, void *loc_md);

@@ -62,7 +62,7 @@ MONO_VERSION_BUILD=`echo $VERSION | cut -d . -f 3`
 # This line is parsed by tools besides autoconf, such as msvc/mono.winconfig.targets.
 # It should remain in the format they expect.
 #
-MONO_CORLIB_VERSION=2cfaeda3-94a9-44e5-8fcb-51979a3398c9
+MONO_CORLIB_VERSION=8E172F4D-82A3-4F55-8D7C-C8E8E0FA58AE
 
 #
 # Put a quoted #define in config.h.
@@ -692,12 +692,12 @@ AC_CHECK_HEADERS(linux/serial.h)
 case "$host" in
 	# Use bundled zlib on Windows to be sure it is static.
 	*-mingw*|*-cygwin*)
-		have_zlib=no
+		have_sys_zlib=no
 		zlib_msg="bundled zlib"
 		;;
-	default)
-		AC_CHECK_HEADER(zlib.h, [have_zlib=yes], [have_zlib=no])
-		if test x$have_zlib = xyes; then
+	*)
+		AC_CHECK_HEADER(zlib.h, [have_sys_zlib=yes], [have_sys_zlib=no])
+		if test x$have_sys_zlib = xyes; then
 			AC_TRY_COMPILE([#include <zlib.h>], [
 				#if defined(ZLIB_VERNUM) && (ZLIB_VERNUM >= 0x1230)
 				#else
@@ -706,12 +706,16 @@ case "$host" in
 			],[
 				AC_MSG_RESULT(Using system zlib)
 				zlib_msg="system zlib"
-				AC_DEFINE(HAVE_SYS_ZLIB,1,[Have system zlib])
+				have_sys_zlib=yes
 			],[
-				AC_MSG_RESULT(Using embedded zlib)
-				have_zlib=no
+				AC_MSG_RESULT(zlib too old, using embedded zlib)
+				have_sys_zlib=no
 				zlib_msg="bundled zlib"
 			])
+		else
+			AC_MSG_RESULT(zlib not found, using embedded zlib)
+			have_sys_zlib=no
+			zlib_msg="bundled zlib"
 		fi
 		;;
 esac
@@ -719,13 +723,19 @@ esac
 AC_ARG_WITH(static-zlib, [  --with-static-zlib=PATH    use the specified static zlib instead of -lz],[STATIC_ZLIB_PATH=$with_static_zlib],[STATIC_ZLIB_PATH=])
 if test "x$STATIC_ZLIB_PATH" != "x"; then
 	have_static_zlib=yes
+	have_sys_zlib=no
+	zlib_msg="static zlib from $STATIC_ZLIB_PATH"
 	AC_SUBST(STATIC_ZLIB_PATH)
 fi
 
 AM_CONDITIONAL(HAVE_STATIC_ZLIB, test x$have_static_zlib = xyes)
-AM_CONDITIONAL(HAVE_ZLIB, test x$have_zlib = xyes)
-AC_DEFINE(HAVE_ZLIB,1,[Have system zlib])
-
+AM_CONDITIONAL(HAVE_SYS_ZLIB, test x$have_sys_zlib = xyes)
+if test x$have_static_zlib = xyes; then
+	AC_DEFINE(HAVE_STATIC_ZLIB, 1, [Use static zlib])
+fi
+if test x$have_sys_zlib = xyes; then
+	AC_DEFINE(HAVE_SYS_ZLIB, 1, [Use OS-provided zlib])
+fi
 # for mono/metadata/debug-symfile.c
 AC_CHECK_HEADERS(elf.h)
 
@@ -1351,7 +1361,6 @@ elif test x$with_runtime_preset = xnetcore; then
    mono_feature_disable_com='yes'
    mono_feature_disable_gac='yes'
    mono_feature_disable_perfcounters='yes'
-   mono_feature_disable_sockets='yes'
    disable_mono_native=yes
    support_boehm=no
 elif test x$with_runtime_preset = xnet_4_x; then
@@ -4174,14 +4183,7 @@ if test "x$enable_llvm" = "xyes"; then
 			AC_MSG_ERROR([LLVM executable $EXTERNAL_LLVM_CONFIG not found.])
 		fi
 	else
-		if test x$host_win32 = xyes; then
-			AC_PATH_PROG(EXTERNAL_LLVM_CONFIG, llvm-config.exe, no)
-		else
-			AC_PATH_PROG(EXTERNAL_LLVM_CONFIG, llvm-config, no)
-		fi
-		if test "x$EXTERNAL_LLVM_CONFIG" = "xno"; then
-			internal_llvm=yes
-		fi
+		internal_llvm=yes
 	fi
 
 	LLVM_CODEGEN_LIBS="x86codegen"
@@ -6037,8 +6039,8 @@ fi
 AC_SUBST(mono_runtime)
 AC_SUBST(mono_runtime_wrapper)
 
-CSC_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/3.1.0-release/csc.exe
-VBCS_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/3.1.0-release/VBCSCompiler.exe
+CSC_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/3.3.0/csc.exe
+VBCS_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/3.3.0/VBCSCompiler.exe
 
 if test $csc_compiler = mcs; then
   CSC=$mcs_topdir/class/lib/build/mcs.exe
@@ -6792,8 +6794,8 @@ AC_MSG_RESULT($enable_compiler_server)
 if test x$enable_compiler_server = xyes; then
    if test x$force_enable_compiler_server = xyes; then
        AC_MSG_WARN([forcing compiler server to stay enabled])
-   elif test x$host_darwin = xyes; then
-       AC_MSG_WARN([compiler server temporarily disabled on darwin])
+   elif test x$host_darwin = xyes || test x$host_win32 = xyes; then
+       AC_MSG_WARN([compiler server temporarily disabled on darwin and win32])
        enable_compiler_server=no;
    elif test x$csc_compiler = xmcs; then
        AC_MSG_WARN([mcs does not support the compiler server])
@@ -6823,9 +6825,7 @@ fi
     echo "sysconfdir=$sysconfdir" >> $mcs_topdir/build/config.make
     echo 'mono_libdir=${exec_prefix}/lib' >> $mcs_topdir/build/config.make
     echo "mono_build_root=$mono_build_root" >> $mcs_topdir/build/config.make
-    echo 'IL_FLAGS = /debug' >> $mcs_topdir/build/config.make
     echo "RUNTIME = $mono_build_root/runtime/mono-wrapper" >> $mcs_topdir/build/config.make
-    echo "ILDISASM = $mono_build_root/runtime/monodis-wrapper" >> $mcs_topdir/build/config.make
     echo "JAY_CFLAGS = $JAY_CFLAGS" >> $mcs_topdir/build/config.make
     echo "VERSION = $VERSION" >> $mcs_topdir/build/config.make
 
